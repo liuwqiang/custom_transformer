@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(cuda_examples LANGUAGES CUDA CXX)
+project(transformer LANGUAGES CUDA CXX)
 
-add_executable(layernorm layernorm_base.cu)
-
-set_target_properties(layernorm PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+# 添加 layernorm 子目录
+add_subdirectory(layernorm)
