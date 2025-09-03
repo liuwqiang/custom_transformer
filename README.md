@@ -1,1 +1,2 @@
-# custom_transformer
+从零实现transformer
+代码全部用cuda实现,最小化依赖包
