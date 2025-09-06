@@ -2,7 +2,7 @@
 #include "layernorm.cuh"
 
 __global__ void layernorm_kernel(const float* inp, float* mean, float* rstd, const float* weight, const float* bias, float* out
-    , int B, int T, int C) {
+    , int B, int T, int C, int block_size) {
     float eps = 1e-5f;
     //计算当前word的位置
     const unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
