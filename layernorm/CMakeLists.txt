@@ -31,7 +31,7 @@ cmake_minimum_required(VERSION 3.18)
 #target_link_libraries(layernorm_benchmark PRIVATE layernorm_v1)
 #set_target_properties(layernorm_benchmark PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
-# 创建静态库
+## 创建静态库
 #add_library(layernorm_v2 STATIC layernorm_v2.cu)
 #set_target_properties(layernorm_v2 PROPERTIES
 #    POSITION_INDEPENDENT_CODE ON

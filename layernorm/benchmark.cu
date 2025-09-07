@@ -264,21 +264,22 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
     float* d_out;
     cudaMalloc(&d_out, B * T * C * sizeof(float));
 
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
+
+    //创建cuda stream
+    cudaStream_t stream1, stream2;
+    cudaStreamCreate(&stream1);
+    cudaStreamCreate(&stream2);
+
     // 创建CUDA事件
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     // 记录开始时间
     cudaEventRecord(start);
-
-    //拷贝数据到显存
-    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
-
-    cudaStream_t stream1, stream2;
-    cudaStreamCreate(&stream1);
-    cudaStreamCreate(&stream2);
 
     //计算均值
     mean_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float), stream1>>>(d_inp, d_out, d_mean, C);
@@ -290,15 +291,15 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
 
     layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
 
-    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
-
     // 记录结束时间
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
+
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_inp);
     cudaFree(d_mean);
@@ -306,6 +307,8 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
     cudaFree(d_weight);
     cudaFree(d_bias);
     cudaFree(d_out);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     return milliseconds;
 }
 
