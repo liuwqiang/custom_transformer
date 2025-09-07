@@ -90,7 +90,7 @@ void layernorm_gpu_base(const float *inp, float *mean, float *rstd, const float 
     cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
 
-    layernorm_kernel<<<grid_size, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
+    layernorm_kernel<<<grid_size, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
     CUDA_CHECK(cudaGetLastError());
 
     cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
@@ -134,10 +134,10 @@ void layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *w
     cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
 
     //计算均值
-    mean_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, C, block_size);
+    mean_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, C);
     //计算标准差的倒数
-    rstd_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, d_rstd, C, block_size);
-    layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
+    rstd_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, d_rstd, C);
+    layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
     CUDA_CHECK(cudaGetLastError());
 
     cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
@@ -181,10 +181,55 @@ void layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *w
     cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
 
     //计算均值
-    mean_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, C, block_size);
+    mean_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, C);
     //计算标准差的倒数
-    rstd_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, d_rstd, C, block_size);
-    layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
+    rstd_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, d_rstd, C);
+    layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
+    CUDA_CHECK(cudaGetLastError());
+
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_inp);
+    cudaFree(d_mean);
+    cudaFree(d_rstd);
+    cudaFree(d_weight);
+    cudaFree(d_bias);
+    cudaFree(d_out);
+}
+
+void layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *weight, const float *bias, float *out, int B, int T, int C, int block_size) {
+    //计算grid
+    double N = B * T;
+
+    //分配显存
+    float* d_inp;
+    cudaMalloc(&d_inp, B * T * C * sizeof(float));
+
+    float* d_mean;
+    cudaMalloc(&d_mean, B * T * sizeof(float));
+
+    float* d_rstd;
+    cudaMalloc(&d_rstd, B * T * sizeof(float));
+
+    float* d_weight;
+    cudaMalloc(&d_weight, C * sizeof(float));
+
+    float* d_bias;
+    cudaMalloc(&d_bias, C * sizeof(float));
+
+    float* d_out;
+    cudaMalloc(&d_out, B * T * C * sizeof(float));
+
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
+
+    //计算均值和标准差倒数
+    mean_rstd_kernel<<<N, block_size, 2 * (C / block_size + 1) * sizeof(float)>>>(d_inp, d_mean, d_rstd, C);
+    layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
     CUDA_CHECK(cudaGetLastError());
 
     cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
@@ -226,7 +271,7 @@ int main(int argc, char *argv[]) {
     float* d_out = (float*) malloc(B * T * C * sizeof(float));
 
     layernorm_cpu(inp, mean, rstd, weight, bias, out, B, T, C);
-    layernorm_gpu_v2(inp, d_mean, d_rstd, weight, bias, d_out, B, T, C, block_size);
+    layernorm_gpu_v3(inp, d_mean, d_rstd, weight, bias, d_out, B, T, C, block_size);
 
     if (check(mean, d_mean, B * T) && check(rstd, d_rstd, B * T) && check(out, d_out, B * T * C)) {
         printf("the ans is right\n");
