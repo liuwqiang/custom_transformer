@@ -32,3 +32,11 @@ __global__ void layernorm_kernel(const float* inp, float* mean, float* rstd, con
         rstd[tid] = s;
     }
 }
+
+__global__ void rstd_kernel(const float* inp, float* out, float* mean, float* rstd, int C,  int block_size) {
+
+}
+
+__global__ void mean_kernel(const float* inp, float* out, float* mean, int C, int block_size) {
+
+}

@@ -6,12 +6,6 @@
 #include <algorithm>
 #include "layernorm.cuh"
 
-#define CUDA_CHECK(call) \
-if ((call) != cudaSuccess) { \
-fprintf(stderr, "CUDA error: %s at %s:%d\n", cudaGetErrorString(call), __FILE__, __LINE__); \
-exit(1); \
-}
-
 // Benchmark 测试类
 class Benchmark {
 public:
@@ -26,6 +20,9 @@ public:
     static void run_benchmark(int rounds, size_t totalBytes, int block_size, Fn&& kernel, Args&&... args) {
         std::vector<double> timings;
         timings.reserve(rounds);
+
+        //首次启动不计入benchmark内
+        run_once(kernel, std::forward<Args>(args)...);
 
         // 正式测试
         for (size_t i = 0; i < rounds; ++i) {
@@ -85,6 +82,11 @@ float layernorm_gpu_base(const float *inp, float *mean, float *rstd, const float
     float* d_out;
     cudaMalloc(&d_out, B * T * C * sizeof(float));
 
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
+
     // 创建CUDA事件
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -92,16 +94,7 @@ float layernorm_gpu_base(const float *inp, float *mean, float *rstd, const float
     // 记录开始时间
     cudaEventRecord(start);
 
-    //拷贝数据到显存
-    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
-
     layernorm_kernel<<<grid_size, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
-
-    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     // 记录结束时间
     cudaEventRecord(stop);
@@ -109,7 +102,9 @@ float layernorm_gpu_base(const float *inp, float *mean, float *rstd, const float
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    CUDA_CHECK(cudaGetLastError());
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_inp);
     cudaFree(d_mean);
@@ -117,12 +112,14 @@ float layernorm_gpu_base(const float *inp, float *mean, float *rstd, const float
     cudaFree(d_weight);
     cudaFree(d_bias);
     cudaFree(d_out);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     return milliseconds;
 }
 
 float layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *weight, const float *bias, float *out, int B, int T, int C, int block_size) {
     //计算grid
-    double N = B * T;
+    int N = B * T;
 
     //分配显存
     float* d_inp;
@@ -143,6 +140,11 @@ float layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *
     float* d_out;
     cudaMalloc(&d_out, B * T * C * sizeof(float));
 
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
+
     // 创建CUDA事件
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -150,20 +152,11 @@ float layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *
     // 记录开始时间
     cudaEventRecord(start);
 
-    //拷贝数据到显存
-    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
-
     //计算均值
     mean_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, C, block_size);
     //计算标准差的倒数
     rstd_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, d_rstd, C, block_size);
     layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
-
-    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     // 记录结束时间
     cudaEventRecord(stop);
@@ -171,7 +164,9 @@ float layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    CUDA_CHECK(cudaGetLastError());
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_inp);
     cudaFree(d_mean);
@@ -179,6 +174,8 @@ float layernorm_gpu_v1(const float *inp, float *mean, float *rstd, const float *
     cudaFree(d_weight);
     cudaFree(d_bias);
     cudaFree(d_out);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     return milliseconds;
 }
 
@@ -205,6 +202,11 @@ float layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *
     float* d_out;
     cudaMalloc(&d_out, B * T * C * sizeof(float));
 
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
+
     // 创建CUDA事件
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -212,20 +214,11 @@ float layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *
     // 记录开始时间
     cudaEventRecord(start);
 
-    //拷贝数据到显存
-    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
-
     //计算均值
     mean_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, C, block_size);
     //计算标准差的倒数
     rstd_kernel<<<N, block_size>>>(d_inp, d_out, d_mean, d_rstd, C, block_size);
     layernorm_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
-
-    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     // 记录结束时间
     cudaEventRecord(stop);
@@ -233,7 +226,9 @@ float layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    CUDA_CHECK(cudaGetLastError());
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(rstd, d_rstd, B * T * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mean, d_mean, B * T * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_inp);
     cudaFree(d_mean);
@@ -241,6 +236,8 @@ float layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *
     cudaFree(d_weight);
     cudaFree(d_bias);
     cudaFree(d_out);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     return milliseconds;
 }
 
@@ -290,6 +287,7 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
 
     cudaStreamSynchronize(stream1);
     cudaStreamSynchronize(stream2);
+
     layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C, block_size);
 
     cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
@@ -302,8 +300,6 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    CUDA_CHECK(cudaGetLastError());
-
     cudaFree(d_inp);
     cudaFree(d_mean);
     cudaFree(d_rstd);
@@ -315,7 +311,7 @@ float layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *
 
 
 int main() {
-    int B = 64, T = 1024, C = 768, block_size = 64, round = 20;
+    int B = 64, T = 1024, C = 768, block_size = 64, round = 10;
     float* inp = (float*) malloc(B * T * C * sizeof(float));
     rand(inp, B * T * C);
 
@@ -336,7 +332,7 @@ int main() {
 
     Benchmark::run_benchmark(
         round, totalBytes,block_size,
-        layernorm_gpu_v1,
+        layernorm_gpu_base,
         inp, mean, rstd,
         weight, bias, out,
         B, T, C, block_size
