@@ -3,3 +3,6 @@ project(transformer LANGUAGES CUDA CXX)
 
 # 添加 layernorm 子目录
 add_subdirectory(layernorm)
+
+# 添加 softmax 子目录
+add_subdirectory(softmax)

@@ -181,9 +181,9 @@ void layernorm_gpu_v2(const float *inp, float *mean, float *rstd, const float *w
     cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
 
     //计算均值
-    mean_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, C);
+    mean_kernel<<<N, block_size, (block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, C);
     //计算标准差的倒数
-    rstd_kernel<<<N, block_size, (C / block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, d_rstd, C);
+    rstd_kernel<<<N, block_size, (block_size + 1) * sizeof(float)>>>(d_inp, d_out, d_mean, d_rstd, C);
     layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
     CUDA_CHECK(cudaGetLastError());
 
@@ -228,7 +228,7 @@ void layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *w
     cudaMemcpy(d_bias, bias, C * sizeof(float), cudaMemcpyHostToDevice);
 
     //计算均值和标准差倒数
-    mean_rstd_kernel<<<N, block_size, 2 * (C / block_size + 1) * sizeof(float)>>>(d_inp, d_mean, d_rstd, C);
+    mean_rstd_kernel<<<N, block_size, 2 * (block_size + 1) * sizeof(float)>>>(d_inp, d_mean, d_rstd, C);
     layernorm_kernel<<<N, block_size>>>(d_inp, d_mean, d_rstd, d_weight, d_bias, d_out, B, T, C);
     CUDA_CHECK(cudaGetLastError());
 
@@ -252,7 +252,7 @@ void layernorm_gpu_v3(const float *inp, float *mean, float *rstd, const float *w
  * float* out 输出向量
  */
 int main(int argc, char *argv[]) {
-    int B = 64, T = 1024, C = 768, block_size = 128;
+    int B = 64, T = 1024, C = 768, block_size = 256;
     float* inp = (float*) malloc(B * T * C * sizeof(float));
     rand(inp, B * T * C);
 
