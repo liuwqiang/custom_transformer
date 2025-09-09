@@ -74,6 +74,52 @@ void softmax_gpu_base(const float *inp,  float *out, int B, int T, int C, int bl
     cudaFree(d_out);
 }
 
+void softmax_gpu_v1(const float *inp,  float *out, int B, int T, int C, int block_size) {
+    //计算grid
+    double N = B * T;
+
+    //分配显存
+    float* d_inp;
+    cudaMalloc(&d_inp, B * T * C * sizeof(float));
+    float* d_out;
+    cudaMalloc(&d_out, B * T * C * sizeof(float));
+
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+
+    softmax_kernel<<<N, block_size, (C + block_size + 1/ block_size) * sizeof(float)>>>(d_inp,  d_out, B, T, C);
+    CUDA_CHECK(cudaGetLastError());
+
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_inp);
+    cudaFree(d_out);
+}
+
+void softmax_gpu_v2(const float *inp,  float *out, int B, int T, int C, int block_size) {
+    //计算grid
+    double N = B * T;
+    int grid_size = ceil((N + block_size - 1)/ block_size);
+
+    //分配显存
+    float* d_inp;
+    cudaMalloc(&d_inp, B * T * C * sizeof(float));
+    float* d_out;
+    cudaMalloc(&d_out, B * T * C * sizeof(float));
+
+    //拷贝数据到显存
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+
+    softmax_kernel<<<grid_size, block_size>>>(d_inp,  d_out, B, T, C);
+    CUDA_CHECK(cudaGetLastError());
+
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_inp);
+    cudaFree(d_out);
+}
+
+
 int main(int argc, char *argv[]) {
     int B = 64, T = 1024, C = 768, block_size = 128;
     float* inp = (float*) malloc(B * T * C * sizeof(float));
@@ -83,7 +129,7 @@ int main(int argc, char *argv[]) {
     float* d_out = (float*) malloc(B * T * C * sizeof(float));
 
     softmax_cpu(inp, out, B, T, C);
-    softmax_gpu_base(inp, d_out, B, T, C, block_size);
+    softmax_gpu_v2(inp, d_out, B, T, C, block_size);
 
     if (check(out, d_out, B * T * C)) {
         printf("the ans is right\n");
