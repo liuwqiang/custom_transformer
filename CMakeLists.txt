@@ -6,4 +6,6 @@ project(transformer LANGUAGES CUDA CXX)
 # 添加 softmax 子目录
 #add_subdirectory(softmax)
 # 添加cross_entropy 子目录
-add_subdirectory(cross_entropy)
+#add_subdirectory(cross_entropy)
+# 添加gemm 子目录
+add_subdirectory(gemm)
