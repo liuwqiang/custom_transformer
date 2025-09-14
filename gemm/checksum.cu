@@ -81,8 +81,32 @@ void matmul_gpu_v1(float* a, float* b, float* out, int M, int N, int K) {
     cudaMemcpy(d_a, a, M * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b, K * N * sizeof(int), cudaMemcpyHostToDevice);
 
-    dim3 dimBlock(16, 16);
-    dim3 dimGrid((M + dimBlock.x - 1) / dimBlock.x, (N + dimBlock.y - 1) / dimBlock.y);
+    dim3 dimBlock(TILE_WIDTH, TILE_WIDTH);
+    dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x, (M + dimBlock.y - 1) / dimBlock.y);
+    matmul_kernel<<<dimGrid, dimBlock>>>(d_a, d_b, d_out, M, N, K);
+    CUDA_CHECK(cudaGetLastError());
+    cudaMemcpy(out, d_out, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_out);
+}
+
+void matmul_gpu_v2(float* a, float* b, float* out, int M, int N, int K) {
+    //分配显存
+    float* d_a;
+    cudaMalloc(&d_a, M * K * sizeof(float));
+    float* d_b;
+    cudaMalloc(&d_b, K * N * sizeof(float));
+    float* d_out;
+    cudaMalloc(&d_out, M * N * sizeof(float));
+
+    //拷贝数据到显存
+    cudaMemcpy(d_a, a, M * K * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, K * N * sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 dimBlock(TILE_WIDTH, TILE_WIDTH);
+    dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x, (M + dimBlock.y - 1) / dimBlock.y);
     matmul_kernel<<<dimGrid, dimBlock>>>(d_a, d_b, d_out, M, N, K);
     CUDA_CHECK(cudaGetLastError());
     cudaMemcpy(out, d_out, M * N * sizeof(float), cudaMemcpyDeviceToHost);
@@ -93,7 +117,7 @@ void matmul_gpu_v1(float* a, float* b, float* out, int M, int N, int K) {
 }
 
 int main(int argc, char *argv[]) {
-    int M = 768, N = 512, K = 512;
+    int M = 1024, N = 1024, K = 1024;
     float* a = (float*) malloc(M * K * sizeof(float));
     rand(a, M * K);
 
@@ -104,7 +128,7 @@ int main(int argc, char *argv[]) {
     float* d_out = (float*) malloc(M * N * sizeof(float));
 
     matmul_cpu(a, b, out, M, N, K);
-    matmul_gpu_v1(a, b , d_out, M, N, K);
+    matmul_gpu_v2(a, b , d_out, M, N, K);
 
     if (check(out, d_out, M * N)) {
         printf("the ans is right\n");

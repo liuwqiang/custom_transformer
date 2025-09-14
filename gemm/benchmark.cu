@@ -145,6 +145,49 @@ float matmul_gpu_v1(float* a, float* b, float* out, int M, int N, int K) {
     return milliseconds;
 }
 
+float matmul_gpu_v2(float* a, float* b, float* out, int M, int N, int K) {
+    //分配block和grid
+    dim3 dimBlock(8, 8);
+    dim3 dimGrid((M + dimBlock.x - 1) / dimBlock.x, (N + dimBlock.y - 1) / dimBlock.y);
+
+    //分配显存
+    float* d_a;
+    cudaMalloc(&d_a, M * K * sizeof(float));
+    float* d_b;
+    cudaMalloc(&d_b, K * N * sizeof(float));
+    float* d_out;
+    cudaMalloc(&d_out, M * N * sizeof(float));
+
+    //拷贝数据到显存
+    cudaMemcpy(d_a, a, M * K * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, K * N * sizeof(int), cudaMemcpyHostToDevice);
+
+    // 创建CUDA事件
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    // 记录开始时间
+    cudaEventRecord(start);
+
+    matmul_kernel<<<dimGrid, dimBlock>>>(d_a, d_b, d_out, M, N, K);
+
+    // 记录结束时间
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    cudaMemcpy(out, d_out, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_out);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return milliseconds;
+}
+
 int main() {
     unsigned long M = 1024UL, N = 1024UL, K = 768UL, round = 10;
     float* a = (float*) malloc(M * K * sizeof(float));
@@ -159,7 +202,7 @@ int main() {
     const long flops = 2 * K * M * N;
     Benchmark::run_benchmark(
             round, totalBytes, flops,
-            matmul_gpu_v1,
+            matmul_gpu_v2,
             a, b, out, M, N, K
     );
     return 0;

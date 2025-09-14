@@ -5,20 +5,15 @@
  *  a:[M,K] [3,5]
  *  b:[K,N] [5,3]
  *  out:[M,N]
- *  优化点：
- *  1.基线代码中最大的问题是访存的问题，a中的每一行需要读取m次，b中的每一列需要读取n次
- *  2.采用共享内存可以缓解memory bound的问题
- *  3.共享内存的大小是有限的，所以不可能将整个矩阵放进来，可以采用分块的方式进行计算
- *  4.将矩阵out切分为[TILE_WIDTH,TILE_WIDTH]大小的多个矩阵块，那么a和b矩阵也需要安装TILE_WIDTH大小进行切分，形成了N个小的矩阵快
- *  5.将a和b中矩阵块的元素加载到共享内存，执行乘加操作
+    CUDA 的 Shared Memory 被分成 32 个 bank（每个 bank 一次只能处理一个线程的请求）。
+    共享内存sharedA[ty][tx]，存储是 row-major，
+    内部布局大概是：sharedA[0][0], sharedA[0][1], …, sharedA[1][0], sharedA[1][1], …。
+    当线程访问 sharedA[ty][k] 时（k 在循环里变化），一个 warp（32 线程）里 不同的 threadIdx.x / threadIdx.y 可能会落到 相同的 bank。
+ 优化点：
+    每一行之间的 stride 不再是 TILE_WIDTH，而是 TILE_WIDTH+1。
+    因为 stride 和 32 不再是倍数，warp 在访问 sharedA[ty][k] 时，每个线程访问的数据会分布在不同 bank 上，从而消除 bank conflict。
  */
-
 __global__ void matmul_kernel(const float* a, const float* b, float* out, int M, int N, int K) {
-    //在C++中,矩阵是 row-major（行主序存储）
-    //A[row][col] 在内存里是 A[row*K + col]。也就是说 列方向（col）是内存里连续的。
-    //如果我们让 threadIdx.x 对应列：
-    //一个 warp（32 个线程）通常是 threadIdx.x 连续的。
-    //那么这 32 个线程会访问 连续的内存地址 → 内存访问合并（coalesced），速度极快。
     int bx = blockIdx.x; //代表在C分块矩阵中的一列
     int by = blockIdx.y; //代表在C分块矩阵中的一行
 
@@ -28,8 +23,8 @@ __global__ void matmul_kernel(const float* a, const float* b, float* out, int M,
     int row = by * TILE_WIDTH + ty; //代表C分块中的行索引
     int col = bx * TILE_WIDTH + tx; //代表C分块中的列索引
 
-    __shared__ float sharedA[TILE_WIDTH][TILE_WIDTH];
-    __shared__ float sharedB[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float sharedA[TILE_WIDTH][TILE_WIDTH + 1];
+    __shared__ float sharedB[TILE_WIDTH][TILE_WIDTH + 1];
 
     float sum = 0.0f;
     for (int tile_index = 0; tile_index < (K + TILE_WIDTH - 1) / TILE_WIDTH; tile_index++) {
