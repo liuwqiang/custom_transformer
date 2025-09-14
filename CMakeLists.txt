@@ -8,4 +8,6 @@ project(transformer LANGUAGES CUDA CXX)
 # 添加cross_entropy 子目录
 #add_subdirectory(cross_entropy)
 # 添加gemm 子目录
-add_subdirectory(gemm)
+#add_subdirectory(gemm)
+# 添加embedding 子目录
+add_subdirectory(embedding)
