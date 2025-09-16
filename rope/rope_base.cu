@@ -1,7 +1,13 @@
 #include "cuda_runtime.h"
 #include "rope.cuh"
+#include <stdio.h>
 
-__global__ void rope_kernel(float* q, float* k, int pos) {
+/**
+ * rope位置编码
+ * RoPE 的核心思想：
+ * 对向量的每一对相邻维度 (x_{2i}, x_{2i+1})，乘上一个二维旋转矩阵。
+ */
+__global__ void rotate_qk_kernel(float* q, float* k, int pos) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     //每个线程处理两个向量
     if (tid < Q_DIM / 2) {

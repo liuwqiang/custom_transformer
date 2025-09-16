@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 # 创建静态库
-add_library(embedding_base STATIC embedding_base.cu rope_base.cu)
+add_library(embedding_base STATIC embedding_base.cu)
 set_target_properties(embedding_base PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CUDA_SEPARABLE_COMPILATION ON

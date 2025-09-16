@@ -10,4 +10,6 @@ project(transformer LANGUAGES CUDA CXX)
 # 添加gemm 子目录
 #add_subdirectory(gemm)
 # 添加embedding 子目录
-add_subdirectory(embedding)
+#add_subdirectory(embedding)
+# 添加rope 子目录
+add_subdirectory(rope)
