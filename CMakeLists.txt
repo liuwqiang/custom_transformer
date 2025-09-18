@@ -12,4 +12,6 @@ project(transformer LANGUAGES CUDA CXX)
 # 添加embedding 子目录
 #add_subdirectory(embedding)
 # 添加rope 子目录
-add_subdirectory(rope)
+#add_subdirectory(rope)
+# 添加rmsnorm 子目录
+add_subdirectory(rmsnorm)
