@@ -4,7 +4,7 @@
 #include <cmath>
 #include <numeric>
 #include <algorithm>
-#include "rms_norm.cuh"
+#include "rmsnorm.cuh"
 
 // Benchmark 测试类
 class Benchmark {
@@ -56,16 +56,24 @@ void rand(float* elements, int size) {
     }
 }
 
-float rotate_qk_gpu(float* q, float* k, int pos) {
+float rms_norm_base_gpu(float* inp, float* weight, float* out, int B, int T, int C) {
+    //计算grid
+    double N = B * T * C;
+    int grid_size = ceil((N + block_size - 1)/ block_size);
+
     //分配显存
-    float* d_q;
-    cudaMalloc(&d_q, Q_DIM * sizeof(float));
-    float* d_k;
-    cudaMalloc(&d_k, KV_DIM * sizeof(float));
+    float* d_inp;
+    cudaMalloc(&d_inp, B * T * C * sizeof(float));
+
+    float* d_weight;
+    cudaMalloc(&d_weight, C * sizeof(float));
+
+    float* d_out;
+    cudaMalloc(&d_out, B * T * C * sizeof(float));
 
     //拷贝数据到显存
-    cudaMemcpy(d_q, q, Q_DIM * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_k, k, KV_DIM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_inp, inp, B * T * C * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_weight, weight, C * sizeof(float), cudaMemcpyHostToDevice);
 
     // 创建CUDA事件
     cudaEvent_t start, stop;
@@ -74,8 +82,7 @@ float rotate_qk_gpu(float* q, float* k, int pos) {
     // 记录开始时间
     cudaEventRecord(start);
 
-    dim3 dimBlock(32);
-    rotate_qk_kernel<<<(Q_DIM / 2 + dimBlock.x - 1) / dimBlock.x, dimBlock>>>(d_q, d_k, pos);
+    rms_norm_kernel<<<grid_size, block_size>>>(d_inp, d_weight, d_out, B, T, C);
 
     // 记录结束时间
     cudaEventRecord(stop);
@@ -83,11 +90,11 @@ float rotate_qk_gpu(float* q, float* k, int pos) {
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    cudaMemcpy(q, d_q, Q_DIM * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(k, d_k, KV_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(out, d_out, B * T * C * sizeof(float), cudaMemcpyDeviceToHost);
 
-    cudaFree(d_q);
-    cudaFree(d_k);
+    cudaFree(d_inp);
+    cudaFree(d_weight);
+    cudaFree(d_out);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
@@ -96,18 +103,20 @@ float rotate_qk_gpu(float* q, float* k, int pos) {
 
 
 int main() {
-    int round = 10;
-    float* q = (float*) malloc(Q_DIM * sizeof(float));
-    rand(q, Q_DIM);
+    int B = 1024, T = 768, C = 128, round = 10;
+    float* inp = (float*) malloc(B * T * C * sizeof(float));
+    rand(inp, B * T * C);
 
-    float* k = (float*) malloc(KV_DIM * sizeof(float));
-    rand(k, KV_DIM);
+    float* weight = (float*) malloc(C * sizeof(float));
+    rand(weight, C);
 
-    const size_t totalBytes = Q_DIM * 2 * sizeof(int) + KV_DIM * 2 * sizeof(float);
+    float* out = (float*) malloc(B * T * C * sizeof(float));
+
+    const size_t totalBytes = B * T * C * 2 * sizeof(float) + C * sizeof(float);
     Benchmark::run_benchmark(
             round, totalBytes,
-            rotate_qk_gpu,
-            q, k, 0
+            rms_norm_base_gpu,
+            inp, weight, out, B, T, C
     );
     return 0;
 }
