@@ -14,4 +14,6 @@ project(transformer LANGUAGES CUDA CXX)
 # 添加rope 子目录
 #add_subdirectory(rope)
 # 添加rmsnorm 子目录
-add_subdirectory(rmsnorm)
+#add_subdirectory(rmsnorm)
+# 添加attention 子目录
+add_subdirectory(attention)
