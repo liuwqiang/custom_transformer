@@ -31,16 +31,31 @@ cmake_minimum_required(VERSION 3.18)
 #set_target_properties(gemm_benchmark PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 # 创建静态库
+#add_library(gemm_v2 STATIC gemm_v2.cu)
+#set_target_properties(gemm_v2 PROPERTIES
+#    POSITION_INDEPENDENT_CODE ON
+#    CUDA_SEPARABLE_COMPILATION ON
+#)
+## 创建可执行文件
+#add_executable(gemm_checksum checksum.cu)
+#target_link_libraries(gemm_checksum PRIVATE gemm_v2)
+#set_target_properties(gemm_checksum PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+## 创建可执行文件
+#add_executable(gemm_benchmark benchmark.cu)
+#target_link_libraries(gemm_benchmark PRIVATE gemm_v2)
+#set_target_properties(gemm_benchmark PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+# 创建静态库
+# 创建可执行文件
 add_library(gemm_v2 STATIC gemm_v2.cu)
 set_target_properties(gemm_v2 PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CUDA_SEPARABLE_COMPILATION ON
 )
+add_executable(cublas_checksum checksum.cu)
+target_link_libraries(cublas_checksum PRIVATE cublas gemm_v2)
+set_target_properties(cublas_checksum PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 # 创建可执行文件
-add_executable(gemm_checksum checksum.cu)
-target_link_libraries(gemm_checksum PRIVATE gemm_v2)
-set_target_properties(gemm_checksum PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-# 创建可执行文件
-add_executable(gemm_benchmark benchmark.cu)
-target_link_libraries(gemm_benchmark PRIVATE gemm_v2)
-set_target_properties(gemm_benchmark PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+add_executable(cublas_benchmark benchmark.cu)
+target_link_libraries(cublas_benchmark PRIVATE cublas gemm_v2)
+set_target_properties(cublas_benchmark PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
